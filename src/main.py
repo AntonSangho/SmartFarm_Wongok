@@ -1,7 +1,7 @@
 import time, machine
 from ds3231_port import DS3231
 from machine import I2C, Pin, PWM
-import dht
+import ahtx0
 from bh1750 import BH1750
 import neopixel
 
@@ -26,19 +26,21 @@ rtc = DS3231(i2c0)
 # 조도 센서 초기화
 bh1750 = BH1750(0x23, i2c0)
 
-# DHT11 센서 설정 (데이터 핀을 14번으로 설정)
-sensor = dht.DHT11(Pin(14))
+# 온습도 센서 통신 설정
+i2c1 = I2C(1, scl=Pin(15), sda=Pin(14), freq=400_000)
+# 온습도 센서 초기화
+sensor = ahtx0.AHT20(i2c1)
 
-# 기록 간격 설정 (DHT11은 최소 2초 간격 필요)
-recording_interval = 2
+# 기록 간격 설정 (30분 = 1800초)
+recording_interval = 1
 last_record_time = 0
 data_file = None
 
 # LED 조명 켜기/끄기 시간 설정 (24시간 형식)
 # 이 값을 직접 수정하여 LED 켜기/끄기 시간을 변경할 수 있습니다
-light_on_hour = 8     # LED 켜는 시간 (시)
-light_on_minute = 0   # LED 켜는 시간 (분)
-light_off_hour = 18   # LED 끄는 시간 (시)
+light_on_hour = 19    # LED 켜는 시간 (시)
+light_on_minute = 6   # LED 켜는 시간 (분)
+light_off_hour = 6    # LED 끄는 시간 (시)
 light_off_minute = 0  # LED 끄는 시간 (분)
 
 # LED 색상 설정
@@ -147,25 +149,16 @@ def record_data():
     current_time = time.time()
     
     # 센서에서 데이터 읽기
-    try:
-        sensor.measure()  # 센서 측정 시작
-        humidity = sensor.humidity()
-        temperature = sensor.temperature()
-        light = bh1750.measurement
-        
-        # 측정값 출력
-        print("Time: {:04d}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}".format(
-            now[0], now[1], now[2], now[3], now[4], now[5]))
-        print("Humidity: {:.2f}%".format(humidity))
-        print("Temperature: {:.2f}C".format(temperature))
-        print("Light: {:.2f} lux".format(light))
-        
-    except OSError as e:
-        print("DHT11 센서 읽기 실패:", e)
-        # 센서 오류 시 기본값 설정
-        humidity = -999
-        temperature = -999
-        light = bh1750.measurement
+    humidity = sensor.relative_humidity
+    temperature = sensor.temperature
+    light = bh1750.measurement
+    
+    # 측정값 출력
+    print("Time: {:04d}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}".format(
+        now[0], now[1], now[2], now[3], now[4], now[5]))
+    print("Humidity: {:.2f}%".format(humidity))
+    print("Temperature: {:.2f}C".format(temperature))
+    print("Light: {:.2f} lux".format(light))
     
     # 파일이 없으면 열기
     if data_file is None:
@@ -213,7 +206,7 @@ start_buzzer()            # 시작 멜로디 재생
 
 # 안내 메시지 출력
 print("프로그램이 시작되었습니다.")
-print("DHT11 온습도센서와 BH1750 조도센서를 사용합니다.")
+print("온습도,조도를 측정합니다.")
 print("버튼을 누르면 기록과 네오픽셀이 시작/중지됩니다.")
 print("현재 LED 켜는 시간: {:02d}시 {:02d}분, 끄는 시간: {:02d}시 {:02d}분".format(
     light_on_hour, light_on_minute, light_off_hour, light_off_minute))
@@ -275,7 +268,7 @@ try:
             
             # 1초마다 시간에 따라 LED 상태 업데이트 (더 빠른 응답성)
             current_time = time.time()
-            if current_time - last_light_check >= 1:
+            if current_time - last_light_check >= 1:  # 5초에서 1초로 변경
                 if is_light_on_time():
                     # LED 켜는 시간 - LED 끄는 시간 사이면 모든 LED 켜기
                     np_on()
@@ -296,7 +289,7 @@ try:
                         light_status = False
                 last_light_check = current_time
         
-        time.sleep(2)  # DHT11 센서 특성상 2초 대기
+        time.sleep(1)  # 1초 대기
 
 except KeyboardInterrupt:  # Ctrl+C로 프로그램 중단 시
     pass
